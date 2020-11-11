@@ -204,7 +204,7 @@ class Program
 
         static void MouseInfo()
         {
-            Console.WriteLine("Press any key to exit...");
+            Console.WriteLine("Press any key to stop...");
             while (true)
             {
                 if (Console.KeyAvailable)                
@@ -295,15 +295,24 @@ class Program
 
         static void Analysis()
         {
-            for (int it = 0; it < number_of_cycles; ++it)
+            Console.WriteLine("Press any key to stop...");
+
+            for (int it = 1; it <= number_of_cycles; ++it)
             {
+                if (Console.KeyAvailable)
+                {
+                    Console.ReadKey(true); // intercept key so to not display it
+                    break;
+                }
+
                 MouseOperations.SetCursorPosition(pos1);
                 MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftDown);
                 MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftUp);
 
                 Thread.Sleep(action_delay);
 
-                CaptureAndAnalyzeImage(true);
+                var total = CaptureAndAnalyzeImage(true);
+                Console.Write(it + ". " + total);
 
                 MouseOperations.SetCursorPosition(pos2);
                 MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftDown);
@@ -311,11 +320,12 @@ class Program
 
                 Thread.Sleep(action_delay);
 
-                CaptureAndAnalyzeImage(true);
+                total = CaptureAndAnalyzeImage(true);
+                Console.WriteLine(" " + total);
             }
         }
 
-        static void CaptureAndAnalyzeImage(bool save)
+        static int CaptureAndAnalyzeImage(bool save)
         {
             var image = ScreenCapture.GetPartialDesktopImage(screen_x, screen_y,
                     screen_w, screen_h);
@@ -335,17 +345,20 @@ class Program
 
             int total = 0;
             for (int i = 0; i < byte_array.Length; ++i)
-                total += byte_array[i];
-
-            Console.WriteLine(total);
+                total += byte_array[i];            
 
             if (save)
             {
+                string dir_name = "CCA_images/";
+                if (!Directory.Exists(dir_name))
+                    Directory.CreateDirectory(dir_name);
                 DateTime timestamp = DateTime.Now;
                 String tsstr = timestamp.ToString("CCA_yyyy_HH_mm_ss.ff", CultureInfo.CreateSpecificCulture("en-US"));
                 String tfname = tsstr + "_" + total + ".png";
-                image.Save(tfname, ImageFormat.Png);
+                image.Save(dir_name + tfname, ImageFormat.Png);
             }
+
+            return total;
         }
     }
 }
