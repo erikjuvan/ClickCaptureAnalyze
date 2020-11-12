@@ -23,6 +23,32 @@ namespace ClickCaptureAnalyze
             RightUp = 0x00000010
         }
 
+        // Used for SendInput
+        // //////////////////
+        internal struct MouseInput
+        {
+            public int X;
+            public int Y;
+            public uint MouseData;
+            public uint Flags;
+            public uint Time;
+            public IntPtr ExtraInfo;
+        }
+
+        internal struct InputType
+        {
+            public static int INPUT_MOUSE = 0;
+            public static int INPUT_KEYBOARD = 1;
+            public static int INPUT_HARDWARE = 2;
+        }
+
+        internal struct Input
+        {
+            public int Type;
+            public MouseInput MouseInput;
+        }
+        // //////////////////
+
         [DllImport("user32.dll", EntryPoint = "SetCursorPos")]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetCursorPos(int x, int y);
@@ -32,7 +58,14 @@ namespace ClickCaptureAnalyze
         private static extern bool GetCursorPos(out MousePoint lpMousePoint);
 
         [DllImport("user32.dll")]
+        // This function is deprecated, in the docs it says to use SendInput instead.
+        // The reason for it, on stackoverflow somebody wrote that this function doesn't
+        // have any way to indicate failure.
         private static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
+
+        [DllImport("user32.dll")]
+        private static extern uint SendInput(uint nInputs, Input[] pInputs, int size);
+
 
         public static void SetCursorPosition(int x, int y)
         {
@@ -56,13 +89,29 @@ namespace ClickCaptureAnalyze
         {
             MousePoint position = GetCursorPosition();
 
-            mouse_event
-                ((int)value,
-                 position.X,
-                 position.Y,
-                 0,
-                 0)
-                ;
+            mouse_event((int)value, position.X, position.Y, 0, 0);
+        }
+
+        public static void MoveAndClickMouse(int x, int y)
+        {
+            // Get screen width and height
+            var w = WIN32_API.GetSystemMetrics(WIN32_API.SM_CXSCREEN);
+            var h = WIN32_API.GetSystemMetrics(WIN32_API.SM_CYSCREEN);
+
+            var i = new Input[3];
+
+            i[0].Type = InputType.INPUT_MOUSE;
+            i[0].MouseInput.X = (x * 65535) / w;
+            i[0].MouseInput.Y = (y * 65535) / h;
+            i[0].MouseInput.Flags = (uint) (MouseEventFlags.Absolute | MouseEventFlags.Move);
+
+            i[1].Type = InputType.INPUT_MOUSE;
+            i[1].MouseInput.Flags = (uint)MouseEventFlags.LeftDown;
+
+            i[2].Type = InputType.INPUT_MOUSE;
+            i[2].MouseInput.Flags = (uint)MouseEventFlags.LeftUp;
+
+            SendInput(3, i, Marshal.SizeOf(i[0]));
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -186,13 +235,15 @@ class Program
         {
             while (true)
             {
-                Console.Write("Mouse info \"mi\", param set \"ps\", analysis \"an\", exit \"x\"?\n>");
+                Console.Write("Mouse info \"mi\", param set \"psm\"(manual) or \"psd\"(dynamic), analysis \"an\", exit \"x\"?\n>");
                 var input = Console.ReadLine();
                 
                 if (input == "mi")
                     MouseInfo();
-                else if (input == "ps")
-                    ParamSet();
+                else if (input == "psm")
+                    ParamSetManual();
+                else if (input == "psd")
+                    ParamSetDynamic();
                 else if (input == "an")
                     Analysis();
                 else if (input == "x" || input == "exit" || input == "quit" || input == "q")
@@ -218,7 +269,7 @@ class Program
             }
         }
 
-        static void ParamSet()
+        static void ParamSetManual()
         {
             // Read screen capture params
             Console.Write("Enter parameters for screen capture (x, y, w, h):");            
@@ -293,6 +344,73 @@ class Program
                 number_of_cycles + "\n--------------");
         }
 
+        static void ParamSetDynamic()
+        {
+            static MouseOperations.MousePoint GetMousePoint()
+            {
+                while (!Console.KeyAvailable) ;
+                Console.ReadKey(true);
+                return MouseOperations.GetCursorPosition();
+            }
+
+            // Get screen capture params
+            Console.Write("Move to top left and press a key...");
+            var pos = GetMousePoint();
+            screen_x = pos.X;
+            screen_y = pos.Y;
+            Console.WriteLine(" \t\t(" + screen_x + "," + screen_y + ")");
+
+            Console.Write("Move to bottom right and press a key...");
+            pos = GetMousePoint();
+            screen_w = pos.X - screen_x;
+            screen_h = pos.Y - screen_y;
+            Console.WriteLine(" \t(" + pos.X + "," + pos.Y + ")");
+
+            // Get mouse position 1
+            Console.Write("Move mouse to location 1 and press a key...");
+            pos1 = GetMousePoint();
+            Console.WriteLine(" \t(" + pos1.X + "," + pos1.Y + ")");
+
+            // Get mouse position 2
+            Console.Write("Move mouse to location 2 and press a key...");
+            pos2 = GetMousePoint();
+            Console.WriteLine(" \t(" + pos2.X + "," + pos2.Y + ")");
+
+            // Get delay
+            Console.Write("Enter delay in ms:");
+
+            var input = Console.ReadLine();
+
+            try
+            {
+                int x = Convert.ToInt32(input);
+                action_delay = x;
+            }
+            catch
+            {
+            }
+
+            // Get number of cycles
+            Console.Write("Enter number of cycles:");
+
+            input = Console.ReadLine();
+
+            try
+            {
+                int x = Convert.ToInt32(input);
+                number_of_cycles = x;
+            }
+            catch
+            {
+            }
+
+            Console.WriteLine("--------------\n" + screen_x + "," + screen_y + "," + screen_w + "," + screen_h + "\n" +
+                pos1.X + "," + pos1.Y + "\n" +
+                pos2.X + "," + pos2.Y + "\n" +
+                action_delay + " ms\n" +
+                number_of_cycles + "\n--------------");
+        }
+
         static void Analysis()
         {
             Console.WriteLine("Press any key to stop...");
@@ -305,18 +423,20 @@ class Program
                     break;
                 }
 
-                MouseOperations.SetCursorPosition(pos1);
-                MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftDown);
-                MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftUp);
+                //MouseOperations.SetCursorPosition(pos1);
+                //MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftDown);
+                //MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftUp);
+                MouseOperations.MoveAndClickMouse(pos1.X, pos1.Y);
 
                 Thread.Sleep(action_delay);
 
                 var total = CaptureAndAnalyzeImage(true);
                 Console.Write(it + ". " + total);
 
-                MouseOperations.SetCursorPosition(pos2);
-                MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftDown);
-                MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftUp);
+                //MouseOperations.SetCursorPosition(pos2);
+                //MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftDown);
+                //MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftUp);
+                MouseOperations.MoveAndClickMouse(pos2.X, pos2.Y);
 
                 Thread.Sleep(action_delay);
 
