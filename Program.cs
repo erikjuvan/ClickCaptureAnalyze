@@ -473,7 +473,7 @@ class Program
                 if (!Directory.Exists(dir_name))
                     Directory.CreateDirectory(dir_name);
                 DateTime timestamp = DateTime.Now;
-                String tsstr = timestamp.ToString("CCA_yyyy_HH_mm_ss.ff", CultureInfo.CreateSpecificCulture("en-US"));
+                String tsstr = timestamp.ToString("CCA_yyyy-MM-dd_HH-mm-ss.ff", CultureInfo.CreateSpecificCulture("en-US"));
                 String tfname = tsstr + "_" + total + ".png";
                 image.Save(dir_name + tfname, ImageFormat.Png);
             }
